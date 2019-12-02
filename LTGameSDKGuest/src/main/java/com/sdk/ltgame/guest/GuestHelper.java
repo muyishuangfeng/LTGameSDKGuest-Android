@@ -2,7 +2,6 @@ package com.sdk.ltgame.guest;
 
 
 import android.app.Activity;
-import android.content.Context;
 import android.content.Intent;
 import android.text.TextUtils;
 
@@ -16,8 +15,6 @@ import com.sdk.ltgame.ltnet.impl.OnLoginSuccessListener;
 import com.sdk.ltgame.ltnet.manager.LoginRealizeManager;
 
 import java.lang.ref.WeakReference;
-import java.util.Map;
-import java.util.WeakHashMap;
 
 public class GuestHelper {
 
