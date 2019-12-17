@@ -3,18 +3,27 @@ package com.sdk.ltgame.guest;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.support.annotation.NonNull;
 import android.text.TextUtils;
 
-
-import com.gentop.ltgame.ltgamesdkcore.base.BaseEntry;
+import com.facebook.CallbackManager;
+import com.facebook.FacebookCallback;
+import com.facebook.FacebookException;
+import com.facebook.FacebookSdk;
+import com.facebook.FacebookSdkNotInitializedException;
+import com.facebook.login.LoginManager;
 import com.gentop.ltgame.ltgamesdkcore.common.Target;
 import com.gentop.ltgame.ltgamesdkcore.impl.OnLoginStateListener;
-import com.sdk.ltgame.ltfacebook.FacebookLoginHelper;
-import com.sdk.ltgame.ltgoogle.GoogleLoginHelper;
-import com.sdk.ltgame.ltnet.impl.OnLoginSuccessListener;
+import com.google.android.gms.auth.api.signin.GoogleSignIn;
+import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
+import com.google.android.gms.auth.api.signin.GoogleSignInClient;
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions;
+import com.google.android.gms.common.api.ApiException;
+import com.google.android.gms.tasks.Task;
 import com.sdk.ltgame.ltnet.manager.LoginRealizeManager;
 
 import java.lang.ref.WeakReference;
+import java.util.Arrays;
 
 public class GuestHelper {
 
@@ -24,6 +33,7 @@ public class GuestHelper {
     private static String clientID;
     public static int selfRequestCode;
     private String adID;
+    private CallbackManager mFaceBookCallBack;
 
 
     GuestHelper(Activity activity, String clientID, String adID,
@@ -41,8 +51,8 @@ public class GuestHelper {
      * 绑定账户
      */
     void onGoogleResult(int requestCode, Intent data) {
-        String token = GoogleLoginHelper.getGuestToken(requestCode, data, selfRequestCode);
-        LoginRealizeManager.bingAccount(mActivityRef.get(), token, "google", mListener);
+        onActivityResult(requestCode, data, selfRequestCode);
+
     }
 
 
@@ -50,7 +60,9 @@ public class GuestHelper {
      * 结果
      */
     void onFBResult(int requestCode, int resultCode, Intent data) {
-        FacebookLoginHelper.getTokenResult(requestCode, resultCode, data);
+        if (mFaceBookCallBack != null) {
+            mFaceBookCallBack.onActivityResult(requestCode, resultCode, data);
+        }
     }
 
 
@@ -61,45 +73,104 @@ public class GuestHelper {
         LoginRealizeManager.guestLogin(mActivityRef.get(), mListener);
     }
 
-    /**
-     * 绑定账户
-     */
-    private void bindFB(String appID) {
-        FacebookLoginHelper.getToken(mActivityRef.get(), appID, new OnLoginSuccessListener<String>() {
-            @Override
-            public void onSuccess(BaseEntry<String> result) {
-                LoginRealizeManager.bingAccount(mActivityRef.get(), result.getResult(), "facebook",
-                        mListener);
-            }
 
-            @Override
-            public void onFailed(BaseEntry<String> failed) {
-
-            }
-        });
-    }
 
     /**
      * 绑定账户
      */
     private void bindGoogle() {
-        GoogleLoginHelper.getToken(clientID, selfRequestCode, mActivityRef.get());
+        initGoogle(mActivityRef.get(), clientID, selfRequestCode);
     }
 
     /**
      * 登录或者绑定
      */
-    void guestLogin(String result, String appID) {
+    void guestLogin( String result, String appID) {
         if (!TextUtils.isEmpty(result)) {
             if (TextUtils.equals(result, "1")) {//游客
                 guestLogin();
             } else if (TextUtils.equals(result, "2")) {//绑定FB
-                bindFB(appID);
+                initFaceBook(appID);
             } else if (TextUtils.equals(result, "3")) {//绑定Google
                 bindGoogle();
             }
         }
     }
+
+    private void initGoogle(Activity context, String clientID, int selfRequestCode) {
+        GoogleSignInOptions gso = new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                .requestIdToken(clientID)
+                .requestEmail()
+                .build();
+        GoogleSignInClient mGoogleSignInClient = GoogleSignIn.getClient(context, gso);
+        Intent signInIntent = mGoogleSignInClient.getSignInIntent();
+        context.startActivityForResult(signInIntent, selfRequestCode);
+    }
+
+
+    private void onActivityResult(int requestCode, Intent data, int selfRequestCode) {
+        if (requestCode == selfRequestCode) {
+            Task<GoogleSignInAccount> task = GoogleSignIn.getSignedInAccountFromIntent(data);
+            if (!TextUtils.isEmpty(adID)) {
+                handleSignInResult(task);
+            }
+        }
+    }
+
+
+    private void handleSignInResult(@NonNull Task<GoogleSignInAccount> completedTask) {
+        try {
+            GoogleSignInAccount account = completedTask.getResult(ApiException.class);
+            String idToken = account.getIdToken();
+            LoginRealizeManager.bingAccount(mActivityRef.get(), idToken, "google", mListener);
+        } catch (ApiException e) {
+            e.printStackTrace();
+        }
+    }
+
+
+    /**
+     * 初始化
+     */
+    private void initFaceBook(String mFacebookID) {
+        FacebookSdk.setApplicationId(mFacebookID);
+        FacebookSdk.sdkInitialize(mActivityRef.get());
+        try {
+            mFaceBookCallBack = CallbackManager.Factory.create();
+            LoginManager.getInstance()
+                    .logInWithReadPermissions(mActivityRef.get(),
+                            Arrays.asList("public_profile"));
+            LoginManager.getInstance().registerCallback(mFaceBookCallBack,
+                    new FacebookCallback<com.facebook.login.LoginResult>() {
+                        @Override
+                        public void onSuccess(com.facebook.login.LoginResult loginResult) {
+                            if (loginResult != null) {
+                                LoginRealizeManager.bingAccount(mActivityRef.get(), loginResult.getAccessToken().getToken(), "facebook",
+                                        mListener);
+
+                            }
+
+                        }
+
+                        @Override
+                        public void onCancel() {
+
+                        }
+
+                        @Override
+                        public void onError(FacebookException error) {
+
+                        }
+                    });
+
+        } catch (FacebookSdkNotInitializedException ex) {
+            ex.printStackTrace();
+        }
+
+    }
+
+
+
 
 
 }
